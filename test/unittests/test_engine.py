@@ -172,7 +172,7 @@ class TestPadatious(unittest.TestCase):
 
         # unknown intents
         test_intent("nice work! get me a beer",
-                    {'get me a beer': [], 'nice work': []})
+                    {'get me a beer': ["unknown"], 'nice work': ["unknown"]})
 
         # conflicting intents/badly modeled intents
         # TODO, sometimes these select greet_person, this is because of "tell {person}" and "tell me a joke"
