@@ -11,7 +11,7 @@ setup(
     author_email='jarbasai@mailfence.com',
     license='Apache-2.0',
     packages=['ovos_intent_plugin_padatious'],
-    install_requires=["ovos-plugin-manager", "padatious"],
+    install_requires=["ovos-plugin-manager", "padatious", "fann2==1.0.7"],
     zip_safe=True,
     classifiers=[
         'Development Status :: 3 - Alpha',
