@@ -79,7 +79,7 @@ class PadatiousExtractor(IntentExtractor):
         return utterance
 
     def calc_intent(self, utterance, min_conf=None):
-        min_conf = min_conf or self.config.get("padatious_min_conf", 0.65)
+        min_conf = min_conf or self.config.get("padatious_min_conf", 0.35)
         utterance = utterance.strip().lower()
         with self.lock:
             intent = self.container.calc_intent(utterance).__dict__
@@ -111,7 +111,7 @@ class PadatiousExtractor(IntentExtractor):
         return intents
 
     def calc_intents(self, utterance, min_conf=None):
-        min_conf = min_conf or self.config.get("padatious_min_conf", 0.65)
+        min_conf = min_conf or self.config.get("padatious_min_conf", 0.35)
         utterance = utterance.strip().lower()
         bucket = {}
         for ut in self.segmenter.segment(utterance):
