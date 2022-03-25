@@ -113,11 +113,18 @@ class TestPadatious(unittest.TestCase):
 
             self.assertEqual({first["intent_type"], second["intent_type"]}, set(intents))
 
-        def test_ambiguous(sent, expected):
-            res = self.engine.calc_intents_list(sent)
-            for utt, intents in expected.items():
-                for i in res[utt]:
-                    self.assertIn(i["intent_type"], intents)
+        def test_ambiguous(sent, expected1, expected2=None):
+            expected2 = expected2 or ["unknown"]
+            res = self.engine.intent_remainder(sent)
+            if len(res) == 1:
+                first = res[0]
+                second = {"intent_type": "unknown", "intent_engine": "padatious"}
+            else:
+                first, second = res[0], res[1]
+            print(first, second)
+
+            self.assertIn(first["intent_type"], expected1)
+            self.assertIn(second["intent_type"], expected2)
 
         # multiple known intents in utterance
         test_intent("close the door turn off the lights", {'door_close', 'lights_off'})
@@ -133,13 +140,11 @@ class TestPadatious(unittest.TestCase):
         # TODO, sometimes these select greet_person, this is because of "tell {person}" and "tell me a joke"
         # not determinstic, sometimes pass sometimes fails
         test_ambiguous("tell me a joke and say hello",
-                       {'tell me a joke': ["joke", "greet_person"],
-                        'say hello': ['hello']}  # say hello often returns no intent
+                       ["joke", "greet_person"],
+                       ['hello', "joke"]  # say hello often returns no intent
                        )
-        test_ambiguous("tell me a joke order some pizza",
-                       {"tell me a joke order some pizza": ["joke", "pizza", 'greet_person']})
-        test_ambiguous("tell me a joke and the weather",
-                       {"tell me a joke": ["joke", 'greet_person'], "the weather": ["weather"]})
+        test_ambiguous("tell me a joke order some pizza",  ["joke", "pizza", 'greet_person'], ["pizza", "joke"])
+        test_ambiguous("tell me a joke and the weather",  ["joke", 'greet_person'],  ["weather", "joke"])
 
     def test_intent_list(self):
         # segment utterance -> calc intent
