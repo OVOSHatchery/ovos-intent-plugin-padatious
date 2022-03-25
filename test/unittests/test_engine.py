@@ -121,8 +121,6 @@ class TestPadatious(unittest.TestCase):
                 second = {"intent_type": "unknown", "intent_engine": "padatious"}
             else:
                 first, second = res[0], res[1]
-            print(first, second)
-
             self.assertIn(first["intent_type"], expected1)
             self.assertIn(second["intent_type"], expected2)
 
