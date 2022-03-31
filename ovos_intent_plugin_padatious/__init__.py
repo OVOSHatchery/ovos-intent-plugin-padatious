@@ -12,12 +12,12 @@ class PadatiousExtractor(IntentExtractor):
 
     def __init__(self, config=None,
                  strategy=IntentDeterminationStrategy.SEGMENT_REMAINDER,
-                 priority=IntentPriority.MEDIUM,
+                 priority=IntentPriority.MEDIUM_HIGH,
                  segmenter=None):
         super().__init__(config, strategy=strategy,
                          priority=priority, segmenter=segmenter)
         data_dir = expanduser(self.config.get("data_dir", xdg_data_home()))
-        cache_dir = cache_dir or join(data_dir, "padatious")
+        cache_dir = join(data_dir, "padatious")
         self.lock = Lock()
         self.container = IntentContainer(cache_dir)
 
