@@ -4,15 +4,18 @@ from threading import Lock
 from ovos_utils.log import LOG
 from ovos_utils.xdg_utils import xdg_data_home
 from padatious import IntentContainer
-
-from ovos_plugin_manager.templates.intents import IntentExtractor
+from ovos_plugin_manager.intents import IntentExtractor, IntentPriority, IntentDeterminationStrategy
 
 
 class PadatiousExtractor(IntentExtractor):
     keyword_based = False
 
-    def __init__(self, cache_dir=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, config=None,
+                 strategy=IntentDeterminationStrategy.SEGMENT_REMAINDER,
+                 priority=IntentPriority.MEDIUM,
+                 segmenter=None):
+        super().__init__(config, strategy=strategy,
+                         priority=priority, segmenter=segmenter)
         data_dir = expanduser(self.config.get("data_dir", xdg_data_home()))
         cache_dir = cache_dir or join(data_dir, "padatious")
         self.lock = Lock()
