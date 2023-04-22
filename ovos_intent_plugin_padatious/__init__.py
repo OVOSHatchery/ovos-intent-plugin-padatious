@@ -45,7 +45,7 @@ class PadatiousExtractor(IntentExtractor):
         with self.lock:
             container.add_entity(entity_name, samples, reload_cache=reload_cache)
 
-    def register_intent(self, intent_name, samples=None, reload_cache=True, lang=None):
+    def register_intent(self, intent_name, samples=None, lang=None, reload_cache=True):
         lang = lang or self.lang
         container = self._get_engine(lang)
         samples = samples or [intent_name]
@@ -54,8 +54,7 @@ class PadatiousExtractor(IntentExtractor):
             container.add_intent(intent_name, samples,
                                  reload_cache=reload_cache)
 
-    def register_entity_from_file(self, entity_name, file_name,
-                                  reload_cache=True, lang=None):
+    def register_entity_from_file(self, entity_name, file_name, lang=None, reload_cache=True):
         lang = lang or self.lang
         container = self._get_engine(lang)
         super().register_entity_from_file(entity_name, file_name, lang)
@@ -63,9 +62,9 @@ class PadatiousExtractor(IntentExtractor):
             container.load_entity(entity_name, file_name,
                                   reload_cache=reload_cache)
 
-    def register_intent_from_file(self, intent_name, file_name,
+    def register_intent_from_file(self, intent_name, file_name, lang=None,
                                   single_thread=True, timeout=120,
-                                  reload_cache=True, force_training=True, lang=None):
+                                  reload_cache=True, force_training=True):
         lang = lang or self.lang
         container = self._get_engine(lang)
         super().register_intent_from_file(intent_name, file_name, lang)
