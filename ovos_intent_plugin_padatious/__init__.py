@@ -1,10 +1,10 @@
 from os.path import join, expanduser
 from threading import Lock
 
+from ovos_plugin_manager.intents import IntentExtractor, IntentPriority, IntentDeterminationStrategy
 from ovos_utils.log import LOG
 from ovos_utils.xdg_utils import xdg_data_home
 from padatious import IntentContainer
-from ovos_plugin_manager.intents import IntentExtractor, IntentPriority, IntentDeterminationStrategy
 
 
 class PadatiousExtractor(IntentExtractor):
@@ -17,9 +17,15 @@ class PadatiousExtractor(IntentExtractor):
         super().__init__(config, strategy=strategy,
                          priority=priority, segmenter=segmenter)
         data_dir = expanduser(self.config.get("data_dir", xdg_data_home()))
-        cache_dir = join(data_dir, "padatious")
+        self.cache_dir = join(data_dir, "padatious")
         self.lock = Lock()
-        self.container = IntentContainer(cache_dir)
+        self.engines = {}  # lang: IntentContainer
+
+    def _get_engine(self, lang=None):
+        lang = lang or self.lang
+        if lang not in self.engines:
+            self.engines[lang] = IntentContainer(self.cache_dir)
+        return self.engines[lang]
 
     def detach_intent(self, intent_name):
         if intent_name in self.registered_intents:
@@ -28,36 +34,44 @@ class PadatiousExtractor(IntentExtractor):
                 self.container.remove_intent(intent_name)
         super().detach_intent(intent_name)
 
-    def register_entity(self, entity_name, samples=None, reload_cache=True):
+    def register_entity(self, entity_name, samples=None, reload_cache=True, lang=None):
+        lang = lang or self.lang
+        container = self._get_engine(lang)
         samples = samples or [entity_name]
         super().register_entity(entity_name, samples)
         with self.lock:
-            self.container.add_entity(entity_name, samples,
-                                      reload_cache=reload_cache)
+            container.add_entity(entity_name, samples,
+                                 reload_cache=reload_cache)
 
-    def register_intent(self, intent_name, samples=None, reload_cache=True):
+    def register_intent(self, intent_name, samples=None, reload_cache=True, lang=None):
+        lang = lang or self.lang
+        container = self._get_engine(lang)
         samples = samples or [intent_name]
         super().register_intent(intent_name, samples)
         with self.lock:
-            self.container.add_intent(intent_name, samples,
-                                      reload_cache=reload_cache)
+            container.add_intent(intent_name, samples,
+                                 reload_cache=reload_cache)
         self.registered_intents.append(intent_name)
 
     def register_entity_from_file(self, entity_name, file_name,
-                                  reload_cache=True):
+                                  reload_cache=True, lang=None):
+        lang = lang or self.lang
+        container = self._get_engine(lang)
         super().register_entity_from_file(entity_name, file_name)
         with self.lock:
-            self.container.load_entity(entity_name, file_name,
-                                       reload_cache=reload_cache)
+            container.load_entity(entity_name, file_name,
+                                  reload_cache=reload_cache)
 
     def register_intent_from_file(self, intent_name, file_name,
                                   single_thread=True, timeout=120,
-                                  reload_cache=True, force_training=True):
+                                  reload_cache=True, force_training=True, lang=None):
+        lang = lang or self.lang
+        container = self._get_engine(lang)
         super().register_intent_from_file(intent_name, file_name)
         try:
             with self.lock:
-                self.container.load_intent(intent_name, file_name,
-                                           reload_cache=reload_cache)
+                container.load_intent(intent_name, file_name,
+                                      reload_cache=reload_cache)
             self.registered_intents.append(intent_name)
             success = self._train(single_thread=single_thread,
                                   timeout=timeout,
@@ -76,11 +90,13 @@ class PadatiousExtractor(IntentExtractor):
                 utterance, samples=self.intent_samples[intent["name"]])
         return utterance
 
-    def calc_intent(self, utterance, min_conf=0.0):
+    def calc_intent(self, utterance, min_conf=0.0, lang=None, session=None):
+        lang = lang or self.lang
+        container = self._get_engine(lang)
         min_conf = min_conf or self.config.get("padatious_min_conf", 0.35)
         utterance = utterance.strip().lower()
         with self.lock:
-            intent = self.container.calc_intent(utterance).__dict__
+            intent = container.calc_intent(utterance).__dict__
         if intent["conf"] < min_conf:
             return {"intent_type": "unknown", "entities": {}, "conf": 0,
                     "intent_engine": "padatious",
@@ -97,7 +113,8 @@ class PadatiousExtractor(IntentExtractor):
 
     def _train(self, single_thread=True, timeout=120, force_training=True):
         with self.lock:
-            return self.container.train(single_thread=single_thread,
-                                        timeout=timeout,
-                                        force=force_training,
-                                        debug=True)
+            for lang in self.engines:
+                self.engines[lang].train(single_thread=single_thread,
+                                         timeout=timeout,
+                                         force=force_training,
+                                         debug=True)
