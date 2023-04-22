@@ -1,10 +1,19 @@
 from os.path import join, expanduser
 from threading import Lock
 
-from ovos_plugin_manager.intents import IntentExtractor, IntentPriority, IntentDeterminationStrategy
+from ovos_plugin_manager.templates.intents import IntentExtractor, IntentMatch, IntentPriority, \
+    IntentDeterminationStrategy
 from ovos_utils.log import LOG
 from ovos_utils.xdg_utils import xdg_data_home
 from padatious import IntentContainer
+
+
+def _munge(name, skill_id):
+    return f"{name}:{skill_id}"
+
+
+def _unmunge(munged):
+    return munged.split(":", 2)
 
 
 class PadatiousExtractor(IntentExtractor):
@@ -27,47 +36,50 @@ class PadatiousExtractor(IntentExtractor):
             self.engines[lang] = IntentContainer(self.cache_dir)
         return self.engines[lang]
 
-    def detach_intent(self, intent_name):
+    def detach_intent(self, skill_id, intent_name):
         for intent in self.registered_intents:
-            if intent.name != intent_name:
+            if intent.name != intent_name or intent.skill_id != skill_id:
                 continue
             LOG.debug("Detaching padatious intent: " + intent_name)
-            for lang in self.engines:
-                with self.lock:
-                    self.engines[lang].remove_intent(intent_name)
+            with self.lock:
+                for lang in self.engines:
+                    self.engines[lang].remove_intent(_munge(intent.name,
+                                                            intent.skill_id))
         super().detach_intent(intent_name)
 
-    def register_entity(self, entity_name, samples=None, reload_cache=True, lang=None):
+    def register_entity(self, skill_id, entity_name, samples=None, lang=None, reload_cache=True):
         lang = lang or self.lang
+        super().register_entity(skill_id, entity_name, samples, lang)
         container = self._get_engine(lang)
         samples = samples or [entity_name]
-        super().register_entity(entity_name, samples, lang)
         with self.lock:
             container.add_entity(entity_name, samples, reload_cache=reload_cache)
 
-    def register_intent(self, intent_name, samples=None, lang=None, reload_cache=True):
+    def register_intent(self, skill_id, intent_name, samples=None, lang=None, reload_cache=True):
         lang = lang or self.lang
+        super().register_intent(skill_id, intent_name, samples, lang)
         container = self._get_engine(lang)
         samples = samples or [intent_name]
-        super().register_intent(intent_name, samples, lang)
+        intent_name = _munge(intent_name, skill_id)
         with self.lock:
             container.add_intent(intent_name, samples,
                                  reload_cache=reload_cache)
 
-    def register_entity_from_file(self, entity_name, file_name, lang=None, reload_cache=True):
+    def register_entity_from_file(self, skill_id, entity_name, file_name, lang=None, reload_cache=True):
         lang = lang or self.lang
         container = self._get_engine(lang)
-        super().register_entity_from_file(entity_name, file_name, lang)
+        super().register_entity_from_file(skill_id, entity_name, file_name, lang)
         with self.lock:
             container.load_entity(entity_name, file_name,
                                   reload_cache=reload_cache)
 
-    def register_intent_from_file(self, intent_name, file_name, lang=None,
+    def register_intent_from_file(self, skill_id, intent_name, file_name, lang=None,
                                   single_thread=True, timeout=120,
                                   reload_cache=True, force_training=True):
         lang = lang or self.lang
         container = self._get_engine(lang)
-        super().register_intent_from_file(intent_name, file_name, lang)
+        super().register_intent_from_file(skill_id, intent_name, file_name, lang)
+        intent_name = _munge(intent_name, skill_id)
         try:
             with self.lock:
                 container.load_intent(intent_name, file_name,
@@ -108,7 +120,15 @@ class PadatiousExtractor(IntentExtractor):
 
         if isinstance(intent["utterance"], list):
             intent["utterance"] = " ".join(intent["utterance"])
-        return intent
+
+        intent_type, skill_id = _unmunge(intent["intent_type"])
+        return IntentMatch(intent_service=intent["intent_engine"],
+                           intent_type=intent_type,
+                           intent_data=intent,
+                           confidence=intent["conf"],
+                           utterance=utterance,
+                           utterance_remainder=intent["utterance_remainder"],
+                           skill_id=skill_id)
 
     def _train(self, single_thread=True, timeout=120, force_training=True):
         with self.lock:
