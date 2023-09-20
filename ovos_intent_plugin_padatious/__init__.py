@@ -1,11 +1,12 @@
 from os.path import join, expanduser
 from threading import Lock
 
-from ovos_plugin_manager.templates.intents import IntentExtractor, IntentMatch, IntentPriority, \
-    IntentDeterminationStrategy
+from ovos_plugin_manager.templates.pipeline import IntentPipelinePlugin, IntentMatch
 from ovos_utils.log import LOG
+from ovos_utils import classproperty
 from ovos_utils.xdg_utils import xdg_data_home
 from padatious import IntentContainer
+from ovos_config import Configuration
 
 
 def _munge(name, skill_id):
@@ -16,20 +17,33 @@ def _unmunge(munged):
     return munged.split(":", 2)
 
 
-class PadatiousExtractor(IntentExtractor):
-    keyword_based = False
+class PadatiousPipelinePlugin(IntentPipelinePlugin):
 
-    def __init__(self, config=None,
-                 strategy=IntentDeterminationStrategy.SEGMENT_REMAINDER,
-                 priority=IntentPriority.MEDIUM_HIGH,
-                 segmenter=None):
-        super().__init__(config, strategy=strategy,
-                         priority=priority, segmenter=segmenter)
-        data_dir = expanduser(self.config.get("data_dir", xdg_data_home()))
+    def __init__(self, bus, config=None):
+        config = config or Configuration().get("padatious", {})  # deprecated
+        super().__init__(bus, config)
+        data_dir = expanduser(Configuration().get("data_dir", xdg_data_home()))
         self.cache_dir = join(data_dir, "padatious")
         self.lock = Lock()
         self.engines = {}  # lang: IntentContainer
 
+    # plugin api
+    @classproperty
+    def matcher_id(self):
+        return "padatious"
+
+    def match(self, utterances, lang, message):
+        return self.calc_intent(utterances, lang=lang)
+
+    def train(self, single_thread=True, timeout=120, force_training=True):
+        with self.lock:
+            for lang in self.engines:
+                self.engines[lang].train(single_thread=single_thread,
+                                         timeout=timeout,
+                                         force=force_training,
+                                         debug=True)
+
+    # implementation
     def _get_engine(self, lang=None):
         lang = lang or self.lang
         if lang not in self.engines:
@@ -42,9 +56,9 @@ class PadatiousExtractor(IntentExtractor):
                 continue
             LOG.debug("Detaching padatious intent: " + intent_name)
             with self.lock:
+                munged = _munge(intent.name, intent.skill_id)
                 for lang in self.engines:
-                    self.engines[lang].remove_intent(_munge(intent.name,
-                                                            intent.skill_id))
+                    self.engines[lang].remove_intent(munged)
         super().detach_intent(intent_name)
 
     def register_entity(self, skill_id, entity_name, samples=None, lang=None, reload_cache=True):
@@ -95,13 +109,7 @@ class PadatiousExtractor(IntentExtractor):
         except Exception as e:
             LOG.exception(e)
 
-    def _get_remainder(self, intent, utterance):
-        if intent["name"] in self.intent_samples:
-            return self.get_utterance_remainder(
-                utterance, samples=self.intent_samples[intent["name"]])
-        return utterance
-
-    def calc_intent(self, utterance, min_conf=0.0, lang=None, session=None):
+    def calc_intent(self, utterance, min_conf=0.0, lang=None):
         lang = lang or self.lang
         container = self._get_engine(lang)
         min_conf = min_conf or self.config.get("padatious_min_conf", 0.35)
@@ -109,31 +117,17 @@ class PadatiousExtractor(IntentExtractor):
         with self.lock:
             intent = container.calc_intent(utterance).__dict__
         if intent["conf"] < min_conf:
-            return {"intent_type": "unknown", "entities": {}, "conf": 0,
-                    "intent_engine": "padatious",
-                    "utterance": utterance, "utterance_remainder": utterance}
-        intent["utterance_remainder"] = self._get_remainder(intent, utterance)
-        intent["entities"] = intent.pop("matches")
-        intent["intent_engine"] = "padatious"
-        intent["intent_type"] = intent.pop("name")
-        intent["utterance"] = intent.pop("sent")
+            return None
 
         if isinstance(intent["utterance"], list):
             intent["utterance"] = " ".join(intent["utterance"])
 
         intent_type, skill_id = _unmunge(intent["intent_type"])
-        return IntentMatch(intent_service=intent["intent_engine"],
+        return IntentMatch(intent_service=self.matcher_id,
                            intent_type=intent_type,
-                           intent_data=intent,
+                           intent_data=intent.pop("matches"),
                            confidence=intent["conf"],
                            utterance=utterance,
-                           utterance_remainder=intent["utterance_remainder"],
                            skill_id=skill_id)
 
-    def _train(self, single_thread=True, timeout=120, force_training=True):
-        with self.lock:
-            for lang in self.engines:
-                self.engines[lang].train(single_thread=single_thread,
-                                         timeout=timeout,
-                                         force=force_training,
-                                         debug=True)
+

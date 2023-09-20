@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from setuptools import setup
 
-PLUGIN_ENTRY_POINT = 'ovos-intent-plugin-padatious=ovos_intent_plugin_padatious:PadatiousExtractor'
+PLUGIN_ENTRY_POINT = 'ovos-intent-plugin-padatious=ovos_intent_plugin_padatious:PadatiousPipelinePlugin'
 setup(
     name='ovos-intent-plugin-padatious',
     version='0.0.1',
@@ -22,5 +22,5 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
     ],
-    entry_points={'intentbox.intent': PLUGIN_ENTRY_POINT}
+    entry_points={'ovos.pipeline': PLUGIN_ENTRY_POINT}
 )

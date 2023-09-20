@@ -1,4 +1,0 @@
-recursive-include ovos_intent_plugin_adapt/ *
-recursive-include requirements/ *
-include CHANGELOG.md
-include LICENSE
