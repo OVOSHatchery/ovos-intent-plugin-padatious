@@ -57,15 +57,32 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
         return self.engines[lang]
 
     def detach_intent(self, skill_id, intent_name):
-        for intent in self.registered_intents:
-            if intent.name != intent_name or intent.skill_id != skill_id:
-                continue
-            LOG.debug("Detaching padatious intent: " + intent_name)
-            with self.lock:
-                munged = _munge(intent.name, intent.skill_id)
-                for lang in self.engines:
-                    self.engines[lang].remove_intent(munged)
+        LOG.debug("Detaching padatious intent: " + intent_name)
+        with self.lock:
+            munged = _munge(intent_name, skill_id)
+            for lang in self.engines:
+                self.engines[lang].remove_intent(munged)
         super().detach_intent(intent_name)
+
+    def detach_entity(self, skill_id, entity_name):
+        LOG.debug("Detaching padatious entity: " + entity_name)
+        name = _munge(entity_name, skill_id)
+        with self.lock:
+            for lang in self.engines:
+                self.engines[lang].remove_entity(name)
+        super().detach_entity(skill_id, entity_name)
+
+    def detach_skill(self, skill_id):
+        LOG.debug("Detaching padatious skill: " + skill_id)
+        with self.lock:
+            for lang in self.engines:
+                for entity in (e for e in self.registered_entities if e.skill_id == skill_id):
+                    munged = _munge(entity.name, skill_id)
+                    self.engines[lang].remove_entity(munged)
+                for intent in (e for e in self.registered_intents if e.skill_id == skill_id):
+                    munged = _munge(intent.name, skill_id)
+                    self.engines[lang].remove_intent(munged)
+        super().detach_skill(skill_id)
 
     def register_entity(self, skill_id, entity_name, samples=None, lang=None, reload_cache=True):
         lang = lang or self.lang
@@ -76,7 +93,7 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
             container.add_entity(entity_name, samples, reload_cache=reload_cache)
 
     def register_intent(self, skill_id, intent_name, samples=None, lang=None, reload_cache=True,
-                        single_thread=True, timeout=120, force_training=True):
+                        single_thread=True, timeout=120, force_training=False):
         lang = lang or self.lang
         super().register_intent(skill_id, intent_name, samples, lang)
         container = self._get_engine(lang)
@@ -94,36 +111,6 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
         else:
             LOG.error(intent_name + " FAILED TO TRAIN")
 
-    def register_entity_from_file(self, skill_id, entity_name, file_name, lang=None, reload_cache=True):
-        lang = lang or self.lang
-        container = self._get_engine(lang)
-        super().register_entity_from_file(skill_id, entity_name, file_name, lang)
-        with self.lock:
-            container.load_entity(entity_name, file_name,
-                                  reload_cache=reload_cache)
-
-    def register_intent_from_file(self, skill_id, intent_name, file_name, lang=None,
-                                  single_thread=True, timeout=120,
-                                  reload_cache=True, force_training=True):
-        lang = lang or self.lang
-        container = self._get_engine(lang)
-        super().register_intent_from_file(skill_id, intent_name, file_name, lang)
-        intent_name = _munge(intent_name, skill_id)
-        try:
-            with self.lock:
-                container.load_intent(intent_name, file_name,
-                                      reload_cache=reload_cache)
-            success = self.train(single_thread=single_thread,
-                                 timeout=timeout,
-                                 force_training=force_training)
-            if success:
-                LOG.debug(file_name + " trained successfully")
-            else:
-                LOG.error(file_name + " FAILED TO TRAIN")
-
-        except Exception as e:
-            LOG.exception(e)
-
     def calc_intent(self, utterance, min_conf=0.0, lang=None):
         lang = lang or self.lang
         container = self._get_engine(lang)
@@ -133,10 +120,6 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
             intent = container.calc_intent(utterance).__dict__
         if intent["conf"] < min_conf:
             return None
-
-        if isinstance(intent["utterance"], list):
-            intent["utterance"] = " ".join(intent["utterance"])
-
         intent_type, skill_id = _unmunge(intent["intent_type"])
         return IntentMatch(intent_service=self.matcher_id,
                            intent_type=intent_type,
