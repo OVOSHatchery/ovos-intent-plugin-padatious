@@ -1,12 +1,12 @@
 from os.path import join, expanduser
 from threading import Lock
 
+from ovos_config import Configuration
 from ovos_plugin_manager.templates.pipeline import IntentPipelinePlugin, IntentMatch
-from ovos_utils.log import LOG
 from ovos_utils import classproperty
+from ovos_utils.log import LOG
 from ovos_utils.xdg_utils import xdg_data_home
 from padatious import IntentContainer
-from ovos_config import Configuration
 
 
 def _munge(name, skill_id):
@@ -37,11 +37,17 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
 
     def train(self, single_thread=True, timeout=120, force_training=True):
         with self.lock:
-            for lang in self.engines:
-                self.engines[lang].train(single_thread=single_thread,
-                                         timeout=timeout,
-                                         force=force_training,
-                                         debug=True)
+            try:
+                for lang in self.engines:
+                    self.engines[lang].train(single_thread=single_thread,
+                                             timeout=timeout,
+                                             force=force_training,
+                                             debug=True)
+            except Exception as e:
+                LOG.exception(f"failed to train {lang}")
+                return False
+
+        return True
 
     # implementation
     def _get_engine(self, lang=None):
@@ -69,7 +75,8 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
         with self.lock:
             container.add_entity(entity_name, samples, reload_cache=reload_cache)
 
-    def register_intent(self, skill_id, intent_name, samples=None, lang=None, reload_cache=True):
+    def register_intent(self, skill_id, intent_name, samples=None, lang=None, reload_cache=True,
+                        single_thread=True, timeout=120, force_training=True):
         lang = lang or self.lang
         super().register_intent(skill_id, intent_name, samples, lang)
         container = self._get_engine(lang)
@@ -78,6 +85,14 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
         with self.lock:
             container.add_intent(intent_name, samples,
                                  reload_cache=reload_cache)
+
+        success = self.train(single_thread=single_thread,
+                             timeout=timeout,
+                             force_training=force_training)
+        if success:
+            LOG.debug(intent_name + " trained successfully")
+        else:
+            LOG.error(intent_name + " FAILED TO TRAIN")
 
     def register_entity_from_file(self, skill_id, entity_name, file_name, lang=None, reload_cache=True):
         lang = lang or self.lang
@@ -98,9 +113,9 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
             with self.lock:
                 container.load_intent(intent_name, file_name,
                                       reload_cache=reload_cache)
-            success = self._train(single_thread=single_thread,
-                                  timeout=timeout,
-                                  force_training=force_training)
+            success = self.train(single_thread=single_thread,
+                                 timeout=timeout,
+                                 force_training=force_training)
             if success:
                 LOG.debug(file_name + " trained successfully")
             else:
@@ -129,5 +144,3 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
                            confidence=intent["conf"],
                            utterance=utterance,
                            skill_id=skill_id)
-
-
