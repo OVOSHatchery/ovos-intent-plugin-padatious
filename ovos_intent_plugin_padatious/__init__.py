@@ -1,4 +1,3 @@
-from os.path import join, expanduser
 from threading import Lock
 
 from ovos_config import Configuration
@@ -7,6 +6,7 @@ from ovos_utils import classproperty
 from ovos_utils.log import LOG
 from ovos_utils.xdg_utils import xdg_data_home
 from padatious import IntentContainer
+from ovos_config.meta import get_xdg_base
 
 
 def _munge(name, skill_id):
@@ -22,8 +22,8 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
     def __init__(self, bus, config=None):
         config = config or Configuration().get("padatious", {})  # deprecated
         super().__init__(bus, config)
-        data_dir = expanduser(Configuration().get("data_dir", xdg_data_home()))
-        self.cache_dir = join(data_dir, "padatious")
+        self.cache_dir = self.config.get('intent_cache') or \
+                         f"{xdg_data_home()}/{get_xdg_base()}/padatious_cache"
         self.lock = Lock()
         self.engines = {}  # lang: IntentContainer
 
@@ -32,7 +32,7 @@ class PadatiousPipelinePlugin(IntentPipelinePlugin):
     def matcher_id(self):
         return "padatious"
 
-    def match(self, utterances, lang, message):
+    def match(self, utterances, lang, message=None):
         return self.calc_intent(utterances, lang=lang)
 
     def train(self, single_thread=True, timeout=120, force_training=True):
